@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}분석 - 회비 관리 시스템{% endblock %}
+
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-graph-up"></i> 데이터 분석</h1>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h5>{{ selected_year }}년 연간 요약</h5>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <strong>총 납부 금액:</strong> {{ yearly_summary.total_amount | currency }}
+            </div>
+            <div class="col-md-3">
+                <strong>총 납부 건수:</strong> {{ yearly_summary.total_payments }}건
+            </div>
+            <div class="col-md-3">
+                <strong>월평균:</strong> {{ yearly_summary.average_monthly | currency }}
+            </div>
+        </div>
+        <div class="chart-container">
+            <canvas id="yearlyChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>납부 추이 (최근 12개월)</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>상위 납부자</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="topPayersChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const yearlyData = {{ yearly_chart | tojson }};
+    const yearlyCtx = document.getElementById('yearlyChart').getContext('2d');
+    new Chart(yearlyCtx, yearlyData);
+    
+    const trendData = {{ trend_chart | tojson }};
+    const trendCtx = document.getElementById('trendChart').getContext('2d');
+    new Chart(trendCtx, trendData);
+    
+    const topPayersData = {{ top_payers_chart | tojson }};
+    const topPayersCtx = document.getElementById('topPayersChart').getContext('2d');
+    new Chart(topPayersCtx, topPayersData);
+</script>
+{% endblock %}
+

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}회원 관리 - 회비 관리 시스템{% endblock %}
+
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-people"></i> 회원 관리</h1>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h5>회원 추가</h5>
+    </div>
+    <div class="card-body">
+        <form id="addMemberForm">
+            <div class="row">
+                <div class="col-md-4">
+                    <input type="text" class="form-control" name="name" placeholder="이름" required>
+                </div>
+                <div class="col-md-4">
+                    <input type="text" class="form-control" name="phone" placeholder="연락처 (010-1234-5678)" required>
+                </div>
+                <div class="col-md-3">
+                    <input type="date" class="form-control" name="join_date" value="{{ today }}">
+                </div>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-plus"></i></button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5>회원 목록 ({{ members|length }}명)</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>이름</th>
+                        <th>연락처</th>
+                        <th>가입일</th>
+                        <th>작업</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for member in members %}
+                    <tr>
+                        <td>{{ member.id }}</td>
+                        <td>{{ member.name }}</td>
+                        <td>{{ member.phone }}</td>
+                        <td>{{ member.join_date }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-danger" onclick="deleteMember({{ member.id }})">
+                                <i class="bi bi-trash"></i> 삭제
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('addMemberForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        
+        const response = await fetch('/members/add', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('회원이 추가되었습니다.');
+            location.reload();
+        } else {
+            alert('오류: ' + (result.errors || result.error || '알 수 없는 오류'));
+        }
+    });
+    
+    async function deleteMember(memberId) {
+        if (!confirm('정말 삭제하시겠습니까?')) return;
+        
+        const response = await fetch(`/members/${memberId}/delete`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('회원이 삭제되었습니다.');
+            location.reload();
+        } else {
+            alert('오류: ' + (result.error || '알 수 없는 오류'));
+        }
+    }
+</script>
+{% endblock %}
+
