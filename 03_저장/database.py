@@ -59,6 +59,20 @@ class DatabaseManager:
                     UNIQUE(member_id, month, year)
                 )
             ''')
+            
+            # 지출 테이블
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS expenses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    category TEXT NOT NULL,
+                    subcategory TEXT,
+                    amount REAL NOT NULL,
+                    description TEXT,
+                    expense_date TEXT NOT NULL,
+                    created_by TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
     
     def save_member(self, name: str, phone: str, join_date: Optional[str] = None) -> int:
         """
@@ -144,6 +158,168 @@ class DatabaseManager:
             cursor = conn.execute('DELETE FROM members WHERE id = ?', (member_id,))
             return cursor.rowcount > 0
     
+    def save_expense(self, category: str, amount: float, expense_date: str,
+                    subcategory: str = None, description: str = None, 
+                    created_by: str = None) -> int:
+        """
+        지출 정보 저장
+        
+        Returns:
+            저장된 지출 기록의 ID
+        """
+        with self.get_connection() as conn:
+            cursor = conn.execute('''
+                INSERT INTO expenses 
+                (category, subcategory, amount, description, expense_date, created_by)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (category, subcategory, amount, description, expense_date, created_by))
+            return cursor.lastrowid
+    
+    def get_all_expenses(self, year: Optional[int] = None, 
+                        month: Optional[int] = None,
+                        category: Optional[str] = None) -> List[Dict]:
+        """지출 기록 조회"""
+        with self.get_connection() as conn:
+            query = 'SELECT * FROM expenses WHERE 1=1'
+            params = []
+            
+            if year and month:
+                query += ' AND strftime("%Y", expense_date) = ? AND strftime("%m", expense_date) = ?'
+                params.extend([str(year), f"{month:02d}"])
+            elif year:
+                query += ' AND strftime("%Y", expense_date) = ?'
+                params.append(str(year))
+            
+            if category:
+                query += ' AND category = ?'
+                params.append(category)
+            
+            query += ' ORDER BY expense_date DESC, created_at DESC'
+            cursor = conn.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def get_expense(self, expense_id: int) -> Optional[Dict]:
+        """특정 지출 조회"""
+        with self.get_connection() as conn:
+            cursor = conn.execute('SELECT * FROM expenses WHERE id = ?', (expense_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+    
+    def delete_expense(self, expense_id: int) -> bool:
+        """지출 삭제"""
+        with self.get_connection() as conn:
+            cursor = conn.execute('DELETE FROM expenses WHERE id = ?', (expense_id,))
+            return cursor.rowcount > 0
+    
+    def get_expense_statistics(self, year: Optional[int] = None) -> Dict:
+        """지출 통계 정보 조회"""
+        with self.get_connection() as conn:
+            stats = {}
+            
+            # 총 지출 금액
+            if year:
+                cursor = conn.execute('''
+                    SELECT SUM(amount) as total 
+                    FROM expenses 
+                    WHERE strftime("%Y", expense_date) = ?
+                ''', (str(year),))
+            else:
+                cursor = conn.execute('SELECT SUM(amount) as total FROM expenses')
+            stats['total_expenses'] = cursor.fetchone()['total'] or 0
+            
+            # 카테고리별 지출
+            if year:
+                cursor = conn.execute('''
+                    SELECT category, SUM(amount) as total, COUNT(*) as count
+                    FROM expenses
+                    WHERE strftime("%Y", expense_date) = ?
+                    GROUP BY category
+                ''', (str(year),))
+            else:
+                cursor = conn.execute('''
+                    SELECT category, SUM(amount) as total, COUNT(*) as count
+                    FROM expenses
+                    GROUP BY category
+                ''')
+            
+            category_stats = {}
+            for row in cursor.fetchall():
+                category_stats[row['category']] = {
+                    'total': row['total'],
+                    'count': row['count']
+                }
+            stats['by_category'] = category_stats
+            
+            # 총 지출 건수
+            if year:
+                cursor = conn.execute('''
+                    SELECT COUNT(*) as count 
+                    FROM expenses 
+                    WHERE strftime("%Y", expense_date) = ?
+                ''', (str(year),))
+            else:
+                cursor = conn.execute('SELECT COUNT(*) as count FROM expenses')
+            stats['total_expense_count'] = cursor.fetchone()['count']
+            
+            return stats
+    
+    def get_unpaid_members_detailed(self, year: Optional[int] = None, 
+                                    month: Optional[int] = None) -> List[Dict]:
+        """
+        미납 회원 상세 정보 조회 (미납 기간 포함)
+        """
+        with self.get_connection() as conn:
+            all_members = self.get_all_members()
+            
+            if year and month:
+                payments = self.get_all_payments(year=year, month=month)
+            elif year:
+                payments = self.get_all_payments(year=year)
+            else:
+                # 현재 월 기준
+                now = datetime.now()
+                payments = self.get_all_payments(year=now.year, month=now.month)
+            
+            paid_member_ids = set(p['member_id'] for p in payments if p['status'] == 'paid')
+            
+            unpaid_members = []
+            for member in all_members:
+                if member['id'] not in paid_member_ids:
+                    # 미납 기간 계산
+                    member_payments = self.get_member_payments(member['id'])
+                    if member_payments:
+                        last_payment = max(member_payments, 
+                                         key=lambda p: (p['year'], p['month']))
+                        last_date = f"{last_payment['year']}-{last_payment['month']:02d}"
+                    else:
+                        last_date = member['join_date']
+                    
+                    unpaid_members.append({
+                        **member,
+                        'last_payment_date': last_date,
+                        'unpaid_months': self._calculate_unpaid_months(
+                            last_date, year or datetime.now().year, 
+                            month or datetime.now().month
+                        )
+                    })
+            
+            return unpaid_members
+    
+    def _calculate_unpaid_months(self, last_date: str, current_year: int, 
+                                 current_month: int) -> int:
+        """미납 개월 수 계산"""
+        try:
+            if '-' in last_date:
+                parts = last_date.split('-')
+                if len(parts) >= 2:
+                    last_year = int(parts[0])
+                    last_month = int(parts[1])
+                    months_diff = (current_year - last_year) * 12 + (current_month - last_month)
+                    return max(0, months_diff)
+        except:
+            pass
+        return 0
+    
     def get_statistics(self) -> Dict:
         """전체 통계 정보 조회"""
         with self.get_connection() as conn:
@@ -160,6 +336,13 @@ class DatabaseManager:
             # 총 납부 건수
             cursor = conn.execute('SELECT COUNT(*) as count FROM payments WHERE status = "paid"')
             stats['total_payments'] = cursor.fetchone()['count']
+            
+            # 총 지출 금액
+            cursor = conn.execute('SELECT SUM(amount) as total FROM expenses')
+            stats['total_expenses'] = cursor.fetchone()['total'] or 0
+            
+            # 순수익 (수입 - 지출)
+            stats['net_income'] = stats['total_amount'] - stats['total_expenses']
             
             return stats
 

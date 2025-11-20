@@ -48,4 +48,16 @@ mobile_app/*/.packages
 mobile_app/*/.pub-cache/
 mobile_app/*/.pub/
 mobile_app/*/pubspec.lock
+mobile_app/*/*.iml
+mobile_app/*/local.properties
+
+# 임시 파일 및 스크립트
+*.bat
+delete_*.bat
+pandas_*.py
+
+# 사용하지 않는 폴더
+mobile_app/flutter/
+mobile_app/react-native/
+mobile_app/mobile_app/
 

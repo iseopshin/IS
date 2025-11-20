@@ -232,6 +232,119 @@ def get_member_history(member_id):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# 지출 관리 API
+@app.route('/api/expenses', methods=['GET'])
+def get_expenses():
+    """지출 기록 조회"""
+    try:
+        year = request.args.get('year', type=int)
+        month = request.args.get('month', type=int)
+        category = request.args.get('category', type=str)
+        
+        expenses = db.get_all_expenses(year=year, month=month, category=category)
+        return jsonify({
+            'success': True,
+            'data': [dict(e) for e in expenses],
+            'count': len(expenses)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/expenses', methods=['POST'])
+def create_expense():
+    """지출 추가"""
+    try:
+        data = request.get_json()
+        category = data.get('category', '').strip()
+        amount = data.get('amount')
+        expense_date = data.get('expense_date', '')
+        subcategory = data.get('subcategory', '').strip() or None
+        description = data.get('description', '').strip() or None
+        created_by = data.get('created_by', '').strip() or None
+        
+        if not category or not amount or not expense_date:
+            return jsonify({
+                'success': False, 
+                'error': '카테고리, 금액, 날짜는 필수입니다.'
+            }), 400
+        
+        if amount <= 0:
+            return jsonify({
+                'success': False,
+                'error': '금액은 0보다 커야 합니다.'
+            }), 400
+        
+        expense_id = db.save_expense(
+            category=category,
+            amount=amount,
+            expense_date=expense_date,
+            subcategory=subcategory,
+            description=description,
+            created_by=created_by
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': '지출이 등록되었습니다.',
+            'data': {'id': expense_id}
+        }), 201
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/expenses/<int:expense_id>', methods=['GET'])
+def get_expense(expense_id):
+    """특정 지출 조회"""
+    try:
+        expense = db.get_expense(expense_id)
+        if expense:
+            return jsonify({'success': True, 'data': dict(expense)})
+        else:
+            return jsonify({'success': False, 'error': '지출을 찾을 수 없습니다.'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/expenses/<int:expense_id>', methods=['DELETE'])
+def delete_expense(expense_id):
+    """지출 삭제"""
+    try:
+        success = db.delete_expense(expense_id)
+        if success:
+            return jsonify({'success': True, 'message': '지출이 삭제되었습니다.'})
+        else:
+            return jsonify({'success': False, 'error': '지출을 찾을 수 없습니다.'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/expenses/statistics', methods=['GET'])
+def get_expense_statistics():
+    """지출 통계"""
+    try:
+        year = request.args.get('year', type=int)
+        stats = db.get_expense_statistics(year=year)
+        return jsonify({
+            'success': True,
+            'data': stats
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# 미납 회원 상세 조회
+@app.route('/api/members/unpaid', methods=['GET'])
+def get_unpaid_members_detailed():
+    """미납 회원 상세 정보 (미납 기간 포함)"""
+    try:
+        year = request.args.get('year', type=int)
+        month = request.args.get('month', type=int)
+        
+        unpaid_members = db.get_unpaid_members_detailed(year=year, month=month)
+        return jsonify({
+            'success': True,
+            'data': [dict(m) for m in unpaid_members],
+            'count': len(unpaid_members)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 if __name__ == '__main__':
     # 프로덕션 환경에서는 gunicorn이나 uwsgi 사용 권장
     app.run(debug=True, host='0.0.0.0', port=5000)
